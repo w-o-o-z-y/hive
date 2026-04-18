@@ -1,0 +1,842 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>HIVE</title>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=IBM+Plex+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #0c0c0c; --surface: #141414; --border: #282828; --border2: #333;
+  --text: #c0bbb3; --dim: #504c48; --accent: #f59e0b; --accent2: #b87409;
+  --aglow: rgba(245,158,11,0.15); --mono: 'IBM Plex Mono',monospace; --display: 'Bebas Neue',sans-serif;
+}
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box;}
+html,body{width:100%;height:100%;overflow:hidden;}
+body{background:var(--bg);color:var(--text);font-family:var(--mono);display:grid;grid-template-rows:52px 80px 1fr 80px 30px;}
+
+#header{display:flex;align-items:center;justify-content:space-between;padding:0 20px;background:var(--surface);border-bottom:1px solid var(--border);}
+.logo{font-family:var(--display);font-size:28px;letter-spacing:8px;color:var(--accent);display:flex;flex-direction:column;line-height:1;}
+.logo small{font-family:var(--mono);font-size:9px;letter-spacing:3px;color:var(--dim);margin-top:2px;}
+.hdr-right{display:flex;gap:8px;align-items:center;}
+
+.panel{display:flex;align-items:center;gap:12px;padding:0 20px;background:var(--surface);border-bottom:1px solid var(--border);transition:border-color .2s,box-shadow .2s;position:relative;overflow:hidden;}
+.panel.top{border-bottom:none;border-top:1px solid var(--border);flex-direction:row-reverse;}
+.panel.active{border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent);}
+.panel.active::before{content:'';position:absolute;inset:0;background:linear-gradient(90deg,transparent 60%,rgba(245,158,11,.04));pointer-events:none;}
+.p-tag{display:flex;flex-direction:column;gap:2px;min-width:80px;}
+.panel.top .p-tag{text-align:right;}
+.p-name{font-family:var(--display);font-size:20px;letter-spacing:3px;}
+.p-status{font-size:9px;letter-spacing:2px;color:var(--dim);text-transform:uppercase;}
+.p-status.live{color:var(--accent);}
+.hand{display:flex;gap:6px;}
+
+.pce{display:flex;flex-direction:column;align-items:center;gap:2px;padding:5px 8px 4px;border:1px solid transparent;border-radius:2px;cursor:pointer;transition:border-color .12s,background .12s;position:relative;min-width:52px;user-select:none;}
+.pce:hover:not(.gone):not(.off){border-color:var(--accent2);background:var(--aglow);}
+.pce.picked{border-color:var(--accent);background:var(--aglow);}
+.pce.gone{opacity:.2;cursor:default;}
+.pce.off{opacity:.35;cursor:not-allowed;}
+.pce.off:hover:not(.gone){border-color:rgba(180,60,60,0.5);background:rgba(180,60,60,0.07);}
+
+/* SVG blocked tooltip */
+#hex-tooltip{
+  position:absolute;pointer-events:none;z-index:25;
+  background:rgba(10,8,6,0.95);border:1px solid rgba(180,60,60,0.6);
+  padding:8px 12px;max-width:200px;
+  transition:opacity .12s;
+  box-shadow:0 4px 16px rgba(0,0,0,0.5);
+}
+#hex-tooltip.hidden{opacity:0;}
+#hex-tooltip .ht-title{font-family:var(--display);font-size:14px;letter-spacing:3px;color:rgba(220,80,80,0.9);margin-bottom:4px;}
+#hex-tooltip .ht-body{font-size:9px;letter-spacing:1px;color:var(--dim);line-height:1.7;}
+.pce.warn{border-color:var(--accent);animation:throb 1s ease-in-out infinite;}
+@keyframes throb{0%,100%{box-shadow:none}50%{box-shadow:0 0 0 3px rgba(245,158,11,.25)}}
+.pce-lbl{font-size:8px;letter-spacing:1px;color:var(--dim);text-transform:uppercase;}
+.pce-cnt{position:absolute;top:3px;right:5px;font-size:9px;font-weight:700;color:var(--accent);}
+
+#board{overflow:hidden;position:relative;background:radial-gradient(ellipse at 50% 50%,#141210 0%,#080808 100%);}
+#board svg{width:100%;height:100%;display:block;}
+
+/* Movement preview panel */
+#move-preview{
+  position:absolute;bottom:16px;left:16px;z-index:20;
+  background:rgba(14,12,10,0.92);border:1px solid var(--accent2);
+  padding:14px 16px;min-width:200px;max-width:230px;
+  backdrop-filter:blur(4px);
+  transition:opacity .15s;
+  pointer-events:none;
+}
+#move-preview.hidden{opacity:0;}
+#move-preview.visible{opacity:1;}
+.mp-head{display:flex;align-items:center;gap:10px;margin-bottom:10px;}
+.mp-icon{width:36px;height:36px;flex-shrink:0;display:flex;align-items:center;justify-content:center;border:1px solid var(--accent2);background:rgba(245,158,11,0.06);}
+.mp-title{font-family:var(--display);font-size:18px;letter-spacing:3px;color:var(--accent);}
+.mp-sub{font-size:8px;letter-spacing:1.5px;color:var(--dim);line-height:1.7;margin-top:4px;}
+.mp-diagram{display:flex;justify-content:center;margin-top:8px;border-top:1px solid var(--border);padding-top:10px;}
+.mp-stack{margin-top:8px;border-top:1px solid var(--border);padding-top:10px;display:flex;flex-direction:column;gap:5px;}
+.mp-stack-row{display:flex;align-items:center;gap:8px;font-size:9px;letter-spacing:1px;color:var(--dim);}
+.mp-stack-row.top-piece{color:var(--text);}
+.mp-stack-badge{font-size:8px;letter-spacing:1px;padding:1px 5px;border:1px solid var(--border2);}
+
+#info{display:flex;align-items:center;gap:12px;padding:0 20px;background:#0a0a0a;border-top:1px solid var(--border);font-size:9px;letter-spacing:1.5px;color:var(--dim);}
+#info b{color:var(--text);font-weight:500;}
+#info .warn{color:var(--accent);margin-left:auto;}
+
+.overlay{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.8);backdrop-filter:blur(3px);z-index:30;}
+.modal{background:var(--surface);border:1px solid var(--accent);padding:44px 52px;text-align:center;min-width:280px;}
+.modal h2{font-family:var(--display);font-size:56px;letter-spacing:4px;color:var(--accent);line-height:1;margin-bottom:8px;}
+.modal p{font-size:10px;letter-spacing:1.5px;color:var(--dim);line-height:2;margin-bottom:28px;text-transform:uppercase;}
+.modal-btns{display:flex;gap:10px;justify-content:center;}
+
+.btn{background:var(--accent);color:#000;border:none;padding:10px 22px;font-family:var(--mono);font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;cursor:pointer;}
+.btn:hover{opacity:.82;}
+.btn-ghost{background:transparent;border:1px solid var(--border2);color:var(--dim);padding:8px 14px;font-family:var(--mono);font-size:10px;letter-spacing:1px;cursor:pointer;transition:all .12s;}
+.btn-ghost:hover{border-color:var(--text);color:var(--text);}
+
+#tweaks{display:none;position:fixed;bottom:40px;right:16px;background:var(--surface);border:1px solid var(--border2);padding:14px 16px;z-index:100;min-width:210px;box-shadow:0 8px 32px rgba(0,0,0,.6);}
+#tweaks.open{display:block;}
+.tw-title{font-family:var(--display);font-size:16px;letter-spacing:4px;color:var(--accent);margin-bottom:12px;border-bottom:1px solid var(--border);padding-bottom:8px;}
+.tw-row{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;font-size:10px;letter-spacing:1px;gap:16px;}
+.toggle{width:34px;height:18px;background:var(--border2);border-radius:9px;cursor:pointer;position:relative;transition:background .2s;flex-shrink:0;}
+.toggle.on{background:var(--accent);}
+.toggle::after{content:'';position:absolute;top:2px;left:2px;width:14px;height:14px;background:#fff;border-radius:50%;transition:transform .2s;}
+.toggle.on::after{transform:translateX(16px);}
+</style>
+</head>
+<body>
+
+<div id="header">
+  <div class="logo">HIVE <small>THE BOARD GAME</small></div>
+  <div class="hdr-right">
+    <button class="btn-ghost" id="undo-btn" onclick="undoMove()" style="display:none">UNDO</button>
+    <button class="btn-ghost" onclick="resetGame()">NEW GAME</button>
+  </div>
+</div>
+
+<div id="panel-black" class="panel top">
+  <div class="p-tag">
+    <div class="p-name" style="color:var(--accent)">BLACK</div>
+    <div class="p-status" id="status-black">WAITING</div>
+  </div>
+  <div class="hand" id="hand-black"></div>
+</div>
+
+<div id="board">
+  <svg id="svg" preserveAspectRatio="xMidYMid meet"></svg>
+  <div id="hex-tooltip" class="hidden"><div class="ht-title" id="ht-title"></div><div class="ht-body" id="ht-body"></div></div>
+  <!-- Movement preview -->
+  <div id="move-preview" class="hidden">
+    <div class="mp-head">
+      <div class="mp-icon" id="mp-icon"></div>
+      <div>
+        <div class="mp-title" id="mp-title"></div>
+        <div class="mp-sub" id="mp-sub"></div>
+      </div>
+    </div>
+    <div id="mp-stack-section" style="display:none" class="mp-stack"></div>
+    <div class="mp-diagram"><svg id="mp-svg" width="160" height="120"></svg></div>
+  </div>
+  <div class="overlay" id="overlay" style="display:none">
+    <div class="modal">
+      <h2 id="overlay-title"></h2>
+      <p id="overlay-body"></p>
+      <div class="modal-btns"><button class="btn" id="overlay-btn"></button></div>
+    </div>
+  </div>
+</div>
+
+<div id="panel-white" class="panel">
+  <div class="p-tag">
+    <div class="p-name" style="color:#cec9c0">WHITE</div>
+    <div class="p-status" id="status-white">YOUR TURN</div>
+  </div>
+  <div class="hand" id="hand-white"></div>
+</div>
+
+<div id="info">
+  <span>MOVE</span><b id="info-move">1</b>
+  <span>·</span><span>TURN</span><b id="info-turn" style="color:#cec9c0">WHITE</b>
+  <span id="info-sel" style="display:none">· <b id="info-sel-text"></b></span>
+  <span class="warn" id="info-warn" style="display:none"></span>
+</div>
+
+<div id="tweaks">
+  <div class="tw-title">TWEAKS</div>
+  <div class="tw-row"><span>Show valid moves</span><div class="toggle on" id="tw-hints" onclick="toggleTweak('hints')"></div></div>
+  <div class="tw-row"><span>Grid lines</span><div class="toggle on" id="tw-grid" onclick="toggleTweak('grid')"></div></div>
+  <div class="tw-row"><span>Show coords</span><div class="toggle" id="tw-coords" onclick="toggleTweak('coords')"></div></div>
+</div>
+
+<script>
+// ─── TWEAKS ───
+const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{"hints":true,"grid":true,"coords":false}/*EDITMODE-END*/;
+let tweaks = {...TWEAK_DEFAULTS};
+function toggleTweak(k){tweaks[k]=!tweaks[k];document.getElementById('tw-'+k).classList.toggle('on',tweaks[k]);render();window.parent.postMessage({type:'__edit_mode_set_keys',edits:{...tweaks}},'*');}
+window.addEventListener('message',e=>{if(e.data?.type==='__activate_edit_mode')document.getElementById('tweaks').classList.add('open');if(e.data?.type==='__deactivate_edit_mode')document.getElementById('tweaks').classList.remove('open');});
+window.parent.postMessage({type:'__edit_mode_available'},'*');
+
+// ─── HEX MATH ───
+const R=44, DIRS=[[1,0],[1,-1],[0,-1],[-1,0],[-1,1],[0,1]];
+const hk=(q,r)=>`${q},${r}`, pk=k=>k.split(',').map(Number);
+const hexXY=(q,r)=>({x:R*1.5*q, y:R*Math.sqrt(3)*(r+q*0.5)});
+function hexPts(cx,cy,r=R-2){return Array.from({length:6},(_,i)=>{const a=Math.PI/3*i;return`${cx+r*Math.cos(a)},${cy+r*Math.sin(a)}`;}).join(' ');}
+const getStack=(b,q,r)=>b.get(hk(q,r))||[];
+const getTop=(b,q,r)=>{const s=getStack(b,q,r);return s[s.length-1];};
+const isOcc=(b,q,r)=>getStack(b,q,r).length>0;
+
+function isConnected(board,excl=null){
+  const occ=new Set();
+  for(const[k,v]of board.entries())if(k!==excl&&v.length>0)occ.add(k);
+  if(occ.size<=1)return true;
+  const start=occ.values().next().value,vis=new Set([start]),q=[start];
+  while(q.length){const k=q.shift();const[a,b]=pk(k);for(const[dq,dr]of DIRS){const nk=hk(a+dq,b+dr);if(!vis.has(nk)&&occ.has(nk)){vis.add(nk);q.push(nk);}}}
+  return vis.size===occ.size;
+}
+function isGated(board,q,r,i){const l=(i+1)%6,ri=(i+5)%6;return isOcc(board,q+DIRS[l][0],r+DIRS[l][1])&&isOcc(board,q+DIRS[ri][0],r+DIRS[ri][1]);}
+function touchesHive(board,q,r,ex=null){for(const[dq,dr]of DIRS){const nk=hk(q+dq,r+dr);if(nk!==ex&&(board.get(nk)||[]).length>0)return true;}return false;}
+
+// ─── PIECE SVG ICONS ───
+// Each returns an SVG string for a 24×24 viewBox, colored with `col`
+const PIECE_ICONS = {
+  Q: (col,sz=24) => `<svg width="${sz}" height="${sz}" viewBox="0 0 24 24" fill="none">
+    <!-- Queen Bee: crown + stinger -->
+    <circle cx="4" cy="7" r="2" fill="${col}"/>
+    <circle cx="12" cy="4" r="2" fill="${col}"/>
+    <circle cx="20" cy="7" r="2" fill="${col}"/>
+    <path d="M3 9 L5 18 L19 18 L21 9 L17 13 L12 6 L7 13 Z" fill="${col}" opacity="0.9"/>
+    <rect x="10" y="18" width="4" height="3" rx="1" fill="${col}" opacity="0.6"/>
+  </svg>`,
+
+  B: (col,sz=24) => `<svg width="${sz}" height="${sz}" viewBox="0 0 24 24" fill="none">
+    <!-- Beetle: oval body + head + 6 legs + wing split -->
+    <ellipse cx="12" cy="14" rx="5.5" ry="6.5" fill="${col}" opacity="0.9"/>
+    <circle cx="12" cy="6.5" r="3" fill="${col}"/>
+    <line x1="12" y1="8" x2="12" y2="20" stroke="${col==='#28221a'?'rgba(40,34,26,0.4)':'rgba(245,158,11,0.3)'}" stroke-width="1.2"/>
+    <!-- legs left -->
+    <line x1="6.5" y1="10" x2="2" y2="8" stroke="${col}" stroke-width="1.3" stroke-linecap="round"/>
+    <line x1="6.5" y1="13.5" x2="1.5" y2="13.5" stroke="${col}" stroke-width="1.3" stroke-linecap="round"/>
+    <line x1="6.5" y1="17" x2="2" y2="19" stroke="${col}" stroke-width="1.3" stroke-linecap="round"/>
+    <!-- legs right -->
+    <line x1="17.5" y1="10" x2="22" y2="8" stroke="${col}" stroke-width="1.3" stroke-linecap="round"/>
+    <line x1="17.5" y1="13.5" x2="22.5" y2="13.5" stroke="${col}" stroke-width="1.3" stroke-linecap="round"/>
+    <line x1="17.5" y1="17" x2="22" y2="19" stroke="${col}" stroke-width="1.3" stroke-linecap="round"/>
+  </svg>`,
+
+  G: (col,sz=24) => `<svg width="${sz}" height="${sz}" viewBox="0 0 24 24" fill="none">
+    <!-- Grasshopper: long body, bent back legs, antennae -->
+    <ellipse cx="10" cy="13" rx="7" ry="3.5" transform="rotate(-15 10 13)" fill="${col}" opacity="0.9"/>
+    <circle cx="18" cy="8" r="3" fill="${col}"/>
+    <!-- antennae -->
+    <line x1="17" y1="5.5" x2="14" y2="2" stroke="${col}" stroke-width="1.2" stroke-linecap="round"/>
+    <line x1="19" y1="5.5" x2="22" y2="2" stroke="${col}" stroke-width="1.2" stroke-linecap="round"/>
+    <!-- big back legs -->
+    <path d="M5 12 Q1 8 3 16 Q5 20 8 18" stroke="${col}" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+    <!-- small front legs -->
+    <line x1="14" y1="10" x2="12" y2="7" stroke="${col}" stroke-width="1.1" stroke-linecap="round"/>
+    <line x1="13" y1="12" x2="10" y2="10" stroke="${col}" stroke-width="1.1" stroke-linecap="round"/>
+  </svg>`,
+
+  S: (col,sz=24) => `<svg width="${sz}" height="${sz}" viewBox="0 0 24 24" fill="none">
+    <!-- Spider: two body segments, 8 legs -->
+    <circle cx="12" cy="15" r="4.5" fill="${col}" opacity="0.9"/>
+    <circle cx="12" cy="8" r="3" fill="${col}"/>
+    <!-- 4 left legs -->
+    <line x1="7.5" y1="12" x2="2" y2="8" stroke="${col}" stroke-width="1.2" stroke-linecap="round"/>
+    <line x1="7.5" y1="14.5" x2="1.5" y2="14" stroke="${col}" stroke-width="1.2" stroke-linecap="round"/>
+    <line x1="7.5" y1="17" x2="2" y2="19" stroke="${col}" stroke-width="1.2" stroke-linecap="round"/>
+    <line x1="9" y1="19" x2="6" y2="23" stroke="${col}" stroke-width="1.2" stroke-linecap="round"/>
+    <!-- 4 right legs -->
+    <line x1="16.5" y1="12" x2="22" y2="8" stroke="${col}" stroke-width="1.2" stroke-linecap="round"/>
+    <line x1="16.5" y1="14.5" x2="22.5" y2="14" stroke="${col}" stroke-width="1.2" stroke-linecap="round"/>
+    <line x1="16.5" y1="17" x2="22" y2="19" stroke="${col}" stroke-width="1.2" stroke-linecap="round"/>
+    <line x1="15" y1="19" x2="18" y2="23" stroke="${col}" stroke-width="1.2" stroke-linecap="round"/>
+  </svg>`,
+
+  A: (col,sz=24) => `<svg width="${sz}" height="${sz}" viewBox="0 0 24 24" fill="none">
+    <!-- Ant: 3 segments, 6 legs, 2 antennae -->
+    <circle cx="12" cy="18" r="3.5" fill="${col}" opacity="0.9"/>
+    <circle cx="12" cy="11.5" r="2.5" fill="${col}"/>
+    <circle cx="12" cy="6" r="2" fill="${col}"/>
+    <!-- antennae -->
+    <line x1="11" y1="4.2" x2="8" y2="1" stroke="${col}" stroke-width="1.2" stroke-linecap="round"/>
+    <line x1="13" y1="4.2" x2="16" y2="1" stroke="${col}" stroke-width="1.2" stroke-linecap="round"/>
+    <!-- legs from thorax -->
+    <line x1="9.5" y1="10.5" x2="5" y2="8.5" stroke="${col}" stroke-width="1.2" stroke-linecap="round"/>
+    <line x1="9.5" y1="12" x2="4" y2="12" stroke="${col}" stroke-width="1.2" stroke-linecap="round"/>
+    <line x1="9.5" y1="13.5" x2="5" y2="16" stroke="${col}" stroke-width="1.2" stroke-linecap="round"/>
+    <line x1="14.5" y1="10.5" x2="19" y2="8.5" stroke="${col}" stroke-width="1.2" stroke-linecap="round"/>
+    <line x1="14.5" y1="12" x2="20" y2="12" stroke="${col}" stroke-width="1.2" stroke-linecap="round"/>
+    <line x1="14.5" y1="13.5" x2="19" y2="16" stroke="${col}" stroke-width="1.2" stroke-linecap="round"/>
+  </svg>`,
+};
+
+// ─── PIECE DATA ───
+const HAND_INIT={Q:1,B:2,G:3,S:2,A:3};
+const PIECE_ORDER=['Q','B','G','S','A'];
+const PIECE_NAMES={Q:'Queen Bee',B:'Beetle',G:'Grasshopper',S:'Spider',A:'Ant'};
+const PIECE_DESC={
+  Q:'Slides exactly 1 space around the hive per turn.',
+  B:'Moves 1 space. Can climb on top of any piece.',
+  G:'Jumps over a line of pieces to land behind them.',
+  S:'Must move exactly 3 spaces along the hive.',
+  A:'Can move to any space touching the hive.',
+};
+
+// Movement diagram definitions (relative hex positions)
+// Each: { center, moves: [[q,r]], path: [[q,r]], obstacles: [[q,r]] }
+const MOVE_DIAGRAMS = {
+  Q: { moves:[[1,0],[1,-1],[0,-1],[-1,0],[-1,1],[0,1]], obstacles:[], label:'Slides 1 space' },
+  B: { moves:[[1,0],[1,-1],[0,-1],[-1,0],[-1,1],[0,1]], obstacles:[], label:'Moves 1, climbs on pieces', climb:true },
+  G: { moves:[[3,0]], obstacles:[[1,0],[2,0]], label:'Jumps over pieces in a line' },
+  S: {
+    moves:[[1,-2],[2,-1]], // simplified 3-step paths
+    path:[[1,0],[1,-1]], obstacles:[],
+    label:'Exactly 3 steps, no backtrack'
+  },
+  A: {
+    moves:[[2,0],[2,-1],[2,-2],[1,-2],[0,-2],[-1,-1],[-1,0],[-1,1],[0,1],[1,1],[2,1]],
+    obstacles:[], label:'Any free space around hive'
+  },
+};
+
+// ─── PLACEMENT ───
+function getPlacementSpots(board,color){
+  let n=0;for(const v of board.values())if(v.length>0)n++;
+  if(n===0)return[[0,0]];
+  if(n===1){const[k]=[...board.entries()].find(([,v])=>v.length>0);const[q,r]=pk(k);return DIRS.map(([dq,dr])=>[q+dq,r+dr]);}
+  const cands=new Set();
+  for(const[k,s]of board.entries()){if(!s.length)continue;const[q,r]=pk(k);for(const[dq,dr]of DIRS){const nk=hk(q+dq,r+dr);if(!(board.get(nk)||[]).length)cands.add(nk);}}
+  const res=[];
+  for(const nk of cands){const[nq,nr]=pk(nk);let f=false,e=false;for(const[dq,dr]of DIRS){const s=board.get(hk(nq+dq,nr+dr))||[];if(s.length){if(s[s.length-1].color===color)f=true;else e=true;}}if(f&&!e)res.push([nq,nr]);}
+  return res;
+}
+
+// ─── MOVES ───
+function queenMoves(board,q,r){const fk=hk(q,r);return DIRS.flatMap(([dq,dr],i)=>{const tq=q+dq,tr=r+dr;if(isOcc(board,tq,tr))return[];if(!touchesHive(board,tq,tr,fk))return[];if(isGated(board,q,r,i))return[];return[[tq,tr]];});}
+function beetleMoves(board,q,r){const el=getStack(board,q,r).length>1;return DIRS.flatMap(([dq,dr],i)=>{const tq=q+dq,tr=r+dr;if(el)return[[tq,tr]];const fk=hk(q,r),empty=!isOcc(board,tq,tr);if(empty&&!touchesHive(board,tq,tr,fk))return[];if(empty&&isGated(board,q,r,i))return[];return[[tq,tr]];});}
+function hopperMoves(board,q,r){return DIRS.flatMap(([dq,dr])=>{let cq=q+dq,cr=r+dr;if(!isOcc(board,cq,cr))return[];while(isOcc(board,cq,cr)){cq+=dq;cr+=dr;}return[[cq,cr]];});}
+function spiderMoves(board,q,r){const sk=hk(q,r);const res=new Set();function dfs(cq,cr,steps,vis){if(steps===3){const k=hk(cq,cr);if(k!==sk)res.add(k);return;}for(let i=0;i<6;i++){const[dq,dr]=DIRS[i],nq=cq+dq,nr=cr+dr,nk=hk(nq,nr);if(vis.has(nk)||isOcc(board,nq,nr))continue;if(!touchesHive(board,nq,nr,sk))continue;if(isGated(board,cq,cr,i))continue;vis.add(nk);dfs(nq,nr,steps+1,vis);vis.delete(nk);}}dfs(q,r,0,new Set([sk]));return[...res].map(pk);}
+function antMoves(board,q,r){const fk=hk(q,r);const reach=new Set();const bq=[];for(let i=0;i<6;i++){const[dq,dr]=DIRS[i],nq=q+dq,nr=r+dr,nk=hk(nq,nr);if(isOcc(board,nq,nr)||!touchesHive(board,nq,nr,fk))continue;if(!reach.has(nk)){reach.add(nk);bq.push([nq,nr]);}}let head=0;while(head<bq.length){const[cq,cr]=bq[head++];for(let i=0;i<6;i++){const[dq,dr]=DIRS[i],nq=cq+dq,nr=cr+dr,nk=hk(nq,nr);if(reach.has(nk)||nk===fk)continue;if(isOcc(board,nq,nr)||!touchesHive(board,nq,nr,fk))continue;if(isGated(board,cq,cr,i))continue;reach.add(nk);bq.push([nq,nr]);}}reach.delete(fk);return[...reach].map(pk);}
+function getPieceMoves(board,q,r){const t=getTop(board,q,r);if(!t)return[];switch(t.type){case'Q':return queenMoves(board,q,r);case'B':return beetleMoves(board,q,r);case'G':return hopperMoves(board,q,r);case'S':return spiderMoves(board,q,r);case'A':return antMoves(board,q,r);default:return[];}}
+
+// ─── WIN ───
+function checkWinner(board){const qpos={};for(const[k,s]of board.entries())for(const p of s)if(p.type==='Q')qpos[p.color]=pk(k);let w=false,b=false;if(qpos.white){const[q,r]=qpos.white;w=DIRS.every(([dq,dr])=>isOcc(board,q+dq,r+dr));}if(qpos.black){const[q,r]=qpos.black;b=DIRS.every(([dq,dr])=>isOcc(board,q+dq,r+dr));}if(w&&b)return'draw';if(w)return'black';if(b)return'white';return null;}
+
+// ─── STATE ───
+let board=new Map(), hands={white:{...HAND_INIT},black:{...HAND_INIT}};
+let turn='white', moveCount=0, selected=null, validMoves=[], winner=null, mustPass=false;
+let history=[]; // stack of {board, hands, turn, moveCount} snapshots
+function queenOnBoard(c){for(const s of board.values())for(const p of s)if(p.color===c&&p.type==='Q')return true;return false;}
+const playerMoveNum=()=>Math.floor(moveCount/2)+1;
+const mustPlaceQueen=(c)=>!queenOnBoard(c)&&playerMoveNum()>=4;
+const opp=(c)=>c==='white'?'black':'white';
+function deepCopyBoard(){const nb=new Map();for(const[k,v]of board.entries())nb.set(k,[...v.map(p=>({...p}))]);return nb;}
+function deepCopyHands(){return{white:{...hands.white},black:{...hands.black}};}
+
+// ─── ACTIONS ───
+function saveHistory(){
+  const snap={
+    board: new Map([...board.entries()].map(([k,v])=>[k,v.map(p=>({...p}))])),
+    hands: {white:{...hands.white},black:{...hands.black}},
+    turn, moveCount
+  };
+  history.push(snap);
+}
+
+function undoMove(){
+  if(!history.length) return;
+  const snap=history.pop();
+  board=snap.board; hands=snap.hands; turn=snap.turn; moveCount=snap.moveCount;
+  winner=null; selected=null; validMoves=[]; mustPass=false;
+  document.getElementById('overlay').style.display='none';
+  render();
+}
+
+function doPlace(q,r,type){
+  saveHistory();
+  const nb=deepCopyBoard(),nh=deepCopyHands();
+  const k=hk(q,r);if(!nb.has(k))nb.set(k,[]);
+  nb.get(k).push({color:turn,type});nh[turn][type]--;
+  applyState(nb,nh);
+}
+function doMove(fq,fr,tq,tr){
+  saveHistory();
+  const nb=deepCopyBoard();
+  const fk=hk(fq,fr),tk=hk(tq,tr);
+  const piece=nb.get(fk).pop();if(!nb.get(fk).length)nb.delete(fk);
+  if(!nb.has(tk))nb.set(tk,[]);nb.get(tk).push(piece);
+  applyState(nb,deepCopyHands());
+}
+function applyState(nb,nh){
+  selected=null;validMoves=[];
+  const w=checkWinner(nb);board=nb;hands=nh;
+  if(w){winner=w;render();showWinner(w);return;}
+  turn=opp(turn);moveCount++;
+  mustPass=!hasAnyMove(nb,nh,turn);
+  render();if(mustPass)showPassModal();
+}
+function hasAnyMove(nb,nh,color){
+  const hasHand=Object.values(nh[color]).some(v=>v>0);
+  const spots=getPlacementSpots(nb,color);
+  if(hasHand&&spots.length>0)return true;
+  let qob=false;for(const s of nb.values())for(const p of s)if(p.color===color&&p.type==='Q'){qob=true;break;}
+  if(!qob)return false;
+  for(const[k,s]of nb.entries()){if(!s.length||s[s.length-1].color!==color)continue;if(!isConnected(nb,k))continue;const[q,r]=pk(k);if(getPieceMoves(nb,q,r).length>0)return true;}
+  return false;
+}
+
+// ─── BLOCK REASONS ───
+// Returns null if piece at (q,r) is movable this turn, else a {title, body} reason.
+function getBlockReason(q, r) {
+  const s = getStack(board, q, r);
+  if (!s.length) return null;
+  const t = s[s.length-1];
+
+  // Opponent's piece
+  if (t.color !== turn) return null; // don't explain opponent pieces
+
+  // Beetle on top (piece is buried)
+  if (s.length > 1 && s[s.length-1].color !== t.color) {
+    return { title:'PINNED', body:'A Beetle is sitting on top of this piece. It cannot move until the Beetle leaves.' };
+  }
+  // Actually buried = top piece belongs to someone but the piece below is what we care about
+  // Re-check: if this piece is NOT the top of the stack
+  // (can't happen since getTop returns top — if top.color===turn we're fine, we look at whether piece below is pinned)
+  // If stack has >1 and we clicked a buried piece, it can't be selected anyway since getTop gives the top.
+  // So really: if piece is covered by a beetle (stack > 1), that's already handled by getTop returning the beetle.
+
+  // Queen not placed yet
+  if (!queenOnBoard(turn)) {
+    return { title:'QUEEN FIRST', body:'You must place your Queen Bee on the board before moving any pieces.' };
+  }
+
+  // Would break the hive (one-hive rule)
+  const fk = hk(q, r);
+  if (!isConnected(board, fk)) {
+    return { title:'BREAKS HIVE', body:'Removing this piece would split the hive in two. The hive must stay connected at all times.' };
+  }
+
+  // Has no valid moves from this position
+  const moves = getPieceMoves(board, q, r);
+  if (moves.length === 0) {
+    return { title:'NO MOVES', body:'This piece has no legal moves — it is completely surrounded or gated on all sides.' };
+  }
+
+  return null; // movable
+}
+
+function getHandBlockReason(color, type) {
+  if (turn !== color) return null;
+  if (mustPlaceQueen(color) && type !== 'Q') {
+    return { title:'QUEEN FIRST', body:'You must place your Queen Bee before playing other pieces (turn 4 rule).' };
+  }
+  return null;
+}
+
+let hoveredBlock = null; // { q, r, reason }
+
+function buildStackTooltipHTML(s) {
+  const rows = s.map((p, i) => {
+    const isTop = i === s.length - 1;
+    const col = p.color === 'white' ? '#cec9c0' : '#f59e0b';
+    const label = isTop ? '▲ TOP' : `▼ ${i+1}`;
+    return `<div style="display:flex;align-items:center;gap:6px;opacity:${isTop?1:0.6}">
+      <span style="font-size:8px;color:${col};letter-spacing:1px;min-width:32px">${label}</span>
+      ${PIECE_ICONS[p.type](col, 16)}
+      <span style="font-size:9px;color:${col};letter-spacing:1px">${p.color.toUpperCase()} ${PIECE_NAMES[p.type].toUpperCase()}</span>
+    </div>`;
+  }).reverse().join('');
+  return rows;
+}
+
+function showStackTooltip(boardX, boardY, s) {
+  const tip = document.getElementById('hex-tooltip');
+  document.getElementById('ht-title').textContent = `STACK ×${s.length}`;
+  document.getElementById('ht-body').innerHTML = buildStackTooltipHTML(s);
+  tip.style.left = (boardX + 14) + 'px';
+  tip.style.top  = (boardY - 10) + 'px';
+  tip.classList.remove('hidden');
+}
+
+function showTooltip(x, y, reason) {
+  const tip = document.getElementById('hex-tooltip');
+  document.getElementById('ht-title').textContent = reason.title;
+  document.getElementById('ht-body').textContent = reason.body;
+  tip.style.left = (x + 14) + 'px';
+  tip.style.top  = (y - 10) + 'px';
+  tip.classList.remove('hidden');
+}
+
+function hideTooltip() {
+  document.getElementById('hex-tooltip').classList.add('hidden');
+}
+
+// ─── SELECTION ───
+function selectHandPiece(color,type){
+  if(winner||turn!==color)return;
+  if(mustPlaceQueen(turn)&&type!=='Q')return;
+  if(selected?.source==='hand'&&selected.type===type){selected=null;validMoves=[];render();return;}
+  selected={source:'hand',type,color};
+  validMoves=getPlacementSpots(board,turn);
+  render();
+}
+function selectBoardHex(q,r){
+  if(winner)return;
+  const isTarget=validMoves.some(([vq,vr])=>vq===q&&vr===r);
+  if(isTarget&&selected){if(selected.source==='hand')doPlace(q,r,selected.type);else doMove(selected.q,selected.r,q,r);return;}
+  const t=getTop(board,q,r);
+  if(!t||t.color!==turn){selected=null;validMoves=[];hideTooltip();render();return;}
+  // Check if piece is blocked — if so, show reason and don't select
+  const reason=getBlockReason(q,r);
+  if(reason){
+    selected={source:'blocked',q,r,type:t.type,reason};validMoves=[];hideTooltip();render();return;
+  }
+  if(selected?.source==='board'&&selected.q===q&&selected.r===r){selected=null;validMoves=[];hideTooltip();render();return;}
+  const moves=getPieceMoves(board,q,r);
+  selected={source:'board',q,r,type:t.type};validMoves=moves;render();
+}
+
+// ─── MODALS ───
+function showPassModal(){
+  document.getElementById('overlay-title').textContent='NO MOVES';
+  document.getElementById('overlay-body').textContent=`${turn.toUpperCase()} has no valid moves. Turn passes.`;
+  const btn=document.getElementById('overlay-btn');btn.textContent='PASS TURN';
+  btn.onclick=()=>{document.getElementById('overlay').style.display='none';mustPass=false;turn=opp(turn);moveCount++;render();};
+  document.getElementById('overlay').style.display='flex';
+}
+function showWinner(w){
+  document.getElementById('overlay-title').textContent=w==='draw'?'DRAW':w.toUpperCase()+' WINS';
+  document.getElementById('overlay-body').textContent=w==='draw'?'Both queens were surrounded simultaneously.':`${opp(w).toUpperCase()}'s Queen Bee has been completely surrounded.`;
+  const btn=document.getElementById('overlay-btn');btn.textContent='PLAY AGAIN';
+  btn.onclick=()=>{document.getElementById('overlay').style.display='none';resetGame();};
+  document.getElementById('overlay').style.display='flex';
+}
+function resetGame(){board=new Map();hands={white:{...HAND_INIT},black:{...HAND_INIT}};turn='white';moveCount=0;winner=null;selected=null;validMoves=[];mustPass=false;history=[];document.getElementById('overlay').style.display='none';render();}
+
+// ─── MOVEMENT PREVIEW ───
+function renderMovePreview(){
+  const panel=document.getElementById('move-preview');
+  if(!selected){panel.className='hidden';return;}
+
+  // Blocked piece — show reason panel
+  if(selected.source==='blocked'){
+    const color=selected.color||(selected.q!=null?getTop(board,selected.q,selected.r)?.color:turn)||turn;
+    const iconCol=color==='white'?'#28221a':'#f59e0b';
+    const r=selected.reason;
+    document.getElementById('mp-icon').innerHTML=PIECE_ICONS[selected.type](iconCol,28);
+    document.getElementById('mp-title').innerHTML=`<span style="color:rgba(220,80,80,0.9)">${r.title}</span>`;
+    document.getElementById('mp-sub').textContent=r.body;
+    document.getElementById('mp-svg').innerHTML=''; // no diagram for blocked
+    document.getElementById('mp-stack-section').style.display='none';
+    // Draw an X diagram
+    const sv=document.getElementById('mp-svg'); sv.setAttribute('viewBox','0 0 160 60');
+    const ns='http://www.w3.org/2000/svg';
+    const txt=document.createElementNS(ns,'text');
+    txt.setAttribute('x','80');txt.setAttribute('y','35');txt.setAttribute('text-anchor','middle');
+    txt.setAttribute('dominant-baseline','central');txt.setAttribute('fill','rgba(180,60,60,0.35)');
+    txt.style.cssText='font-size:40px;font-family:"IBM Plex Mono",monospace;';txt.textContent='⊘';
+    sv.appendChild(txt);
+    panel.style.borderColor='rgba(180,60,60,0.5)';
+    panel.className='visible';
+    return;
+  }
+
+  panel.style.borderColor='';
+  const type=selected.type||(selected.source==='board'?getTop(board,selected.q,selected.r)?.type:null);
+  if(!type){panel.className='hidden';return;}
+
+  const color=selected.color||turn;
+  const iconCol=color==='white'?'#28221a':'#f59e0b';
+  document.getElementById('mp-icon').innerHTML=PIECE_ICONS[type](iconCol,28);
+  document.getElementById('mp-title').textContent=PIECE_NAMES[type];
+  document.getElementById('mp-sub').textContent=PIECE_DESC[type];
+
+  // Stack contents
+  const stackSection=document.getElementById('mp-stack-section');
+  if(selected.source==='board'&&selected.q!=null){
+    const s=getStack(board,selected.q,selected.r);
+    if(s.length>1){
+      stackSection.style.display='';
+      stackSection.innerHTML=`<div style="font-size:8px;letter-spacing:2px;color:var(--dim);margin-bottom:4px">STACK ×${s.length}</div>`+buildStackTooltipHTML(s);
+    } else { stackSection.style.display='none'; }
+  } else { stackSection.style.display='none'; }
+
+  renderMoveDiagram(type);
+  panel.className='visible';
+}
+
+function renderMoveDiagram(type){
+  const svg=document.getElementById('mp-svg');
+  svg.innerHTML='';
+  const W=160,H=120,NS='http://www.w3.org/2000/svg';
+  svg.setAttribute('viewBox',`0 0 ${W} ${H}`);
+
+  const r=18; // small hex radius
+  const cx2=(q,r2)=>({x:80+r*1.5*q, y:60+r*Math.sqrt(3)*(r2+q*0.5)});
+  function hexP(cx,cy,rr=r-1){return Array.from({length:6},(_,i)=>{const a=Math.PI/3*i;return`${cx+rr*Math.cos(a)},${cy+rr*Math.sin(a)}`;}).join(' ');}
+  function addHex(q,r2,fill,stroke,sw=1){const{x,y}=cx2(q,r2);const p=document.createElementNS(NS,'polygon');p.setAttribute('points',hexP(x,y));p.setAttribute('fill',fill);p.setAttribute('stroke',stroke);p.setAttribute('stroke-width',sw);svg.appendChild(p);}
+  function addIcon(q,r2,t,col){const{x,y}=cx2(q,r2);const fo=document.createElementNS(NS,'foreignObject');fo.setAttribute('x',x-10);fo.setAttribute('y',y-10);fo.setAttribute('width','20');fo.setAttribute('height','20');fo.innerHTML=`<div xmlns="http://www.w3.org/1999/xhtml" style="width:20px;height:20px;">${PIECE_ICONS[t](col,20)}</div>`;svg.appendChild(fo);}
+
+  const diag=MOVE_DIAGRAMS[type];
+
+  if(type==='Q'||type==='B'||type==='A'){
+    // Show piece at center, ring of moves highlighted
+    // Draw grid background first
+    const allHexes=new Set(['0,0']);
+    for(const[q,r2]of diag.moves)allHexes.add(`${q},${r2}`);
+    for(const k of allHexes){const[q,r2]=k.split(',').map(Number);const{x,y}=cx2(q,r2);const p=document.createElementNS(NS,'polygon');p.setAttribute('points',hexP(x,y,r-2));p.setAttribute('fill','transparent');p.setAttribute('stroke','#222');p.setAttribute('stroke-width','0.8');svg.appendChild(p);}
+    for(const[q,r2]of diag.moves)addHex(q,r2,'rgba(74,222,128,0.15)','rgba(74,222,128,0.6)',1.5);
+    if(type==='B'){
+      // extra stack indicator
+      const{x,y}=cx2(0,0);const p2=document.createElementNS(NS,'polygon');p2.setAttribute('points',hexP(x+3,y+3,r-2));p2.setAttribute('fill','#222');p2.setAttribute('stroke','none');svg.appendChild(p2);
+    }
+    addHex(0,0,'rgba(245,158,11,0.15)','#f59e0b',2);
+    addIcon(0,0,type,'#f59e0b');
+    // dots
+    for(const[q,r2]of diag.moves){const{x,y}=cx2(q,r2);const c=document.createElementNS(NS,'circle');c.setAttribute('cx',x);c.setAttribute('cy',y);c.setAttribute('r','4');c.setAttribute('fill','rgba(74,222,128,0.7)');svg.appendChild(c);}
+  }
+
+  if(type==='G'){
+    // Show a row: piece[0,0], obstacle[1,0], obstacle[2,0], land[3,0]
+    for(let q=-1;q<=4;q++){const{x,y}=cx2(q,0);const p=document.createElementNS(NS,'polygon');p.setAttribute('points',hexP(x,y,r-2));p.setAttribute('fill','transparent');p.setAttribute('stroke','#222');p.setAttribute('stroke-width','0.8');svg.appendChild(p);}
+    // obstacles
+    addHex(1,0,'rgba(180,180,170,0.12)','#555',1);
+    addHex(2,0,'rgba(180,180,170,0.12)','#555',1);
+    // landing
+    addHex(3,0,'rgba(74,222,128,0.15)','rgba(74,222,128,0.6)',1.5);
+    // jumper
+    addHex(0,0,'rgba(245,158,11,0.15)','#f59e0b',2);
+    // arrow
+    const{x:x0,y:y0}=cx2(0,0),{x:x3,y:y3}=cx2(3,0);
+    const arr=document.createElementNS(NS,'line');arr.setAttribute('x1',x0);arr.setAttribute('y1',y0);arr.setAttribute('x2',x3);arr.setAttribute('y2',y3);arr.setAttribute('stroke','rgba(245,158,11,0.4)');arr.setAttribute('stroke-width','1.5');arr.setAttribute('stroke-dasharray','3 2');svg.appendChild(arr);
+    addIcon(0,0,'G','#f59e0b');
+    // small pieces in obstacles
+    for(const q of[1,2]){const{x,y}=cx2(q,0);const c=document.createElementNS(NS,'circle');c.setAttribute('cx',x);c.setAttribute('cy',y);c.setAttribute('r','5');c.setAttribute('fill','#444');svg.appendChild(c);}
+    const{x:xl,y:yl}=cx2(3,0);const cl=document.createElementNS(NS,'circle');cl.setAttribute('cx',xl);cl.setAttribute('cy',yl);cl.setAttribute('r','5');cl.setAttribute('fill','rgba(74,222,128,0.6)');svg.appendChild(cl);
+  }
+
+  if(type==='S'){
+    // Show a 3-step path around a hive piece
+    const hive=[[1,0],[1,-1]]; // immovable hive pieces
+    const path=[[0,-1],[1,-2]]; // spider path steps 1,2
+    const end=[2,-1]; // step 3 = destination
+    const all=new Set(['0,0','1,0','1,-1','0,-1','1,-2','2,-1','-1,0','-1,1']);
+    for(const k of all){const[q,r2]=k.split(',').map(Number);addHex(q,r2,'transparent','#222',0.8);}
+    for(const[q,r2]of hive)addHex(q,r2,'rgba(180,180,170,0.1)','#444',1);
+    // path dots connected
+    const pathNodes=[...path,[...end]];
+    for(let i=0;i<pathNodes.length-1;i++){const[aq,ar]=pathNodes[i];const[bq,br]=pathNodes[i+1];const{x:ax,y:ay}=cx2(aq,ar);const{x:bx,y:by}=cx2(bq,br);const l=document.createElementNS(NS,'line');l.setAttribute('x1',ax);l.setAttribute('y1',ay);l.setAttribute('x2',bx);l.setAttribute('y2',by);l.setAttribute('stroke','rgba(245,158,11,0.4)');l.setAttribute('stroke-width','1.5');l.setAttribute('stroke-dasharray','3 2');svg.appendChild(l);}
+    for(const[q,r2]of path){addHex(q,r2,'rgba(245,158,11,0.07)','rgba(245,158,11,0.3)',1);const{x,y}=cx2(q,r2);const c=document.createElementNS(NS,'circle');c.setAttribute('cx',x);c.setAttribute('cy',y);c.setAttribute('r','3');c.setAttribute('fill','rgba(245,158,11,0.5)');svg.appendChild(c);}
+    addHex(end[0],end[1],'rgba(74,222,128,0.15)','rgba(74,222,128,0.6)',1.5);
+    addHex(0,0,'rgba(245,158,11,0.15)','#f59e0b',2);
+    addIcon(0,0,'S','#f59e0b');
+    // step numbers
+    [...path,[...end]].forEach(([q,r2],i)=>{const{x,y}=cx2(q,r2);const t2=document.createElementNS(NS,'text');t2.setAttribute('x',x);t2.setAttribute('y',y-10);t2.setAttribute('text-anchor','middle');t2.setAttribute('fill',i===2?'rgba(74,222,128,0.9)':'rgba(245,158,11,0.7)');t2.setAttribute('font-size','7');t2.setAttribute('font-family','IBM Plex Mono, monospace');t2.textContent=i+1;svg.appendChild(t2);});
+  }
+}
+
+// ─── MAIN SVG ───
+const SVG_NS='http://www.w3.org/2000/svg';
+function svgEl(tag,attrs={}){const e=document.createElementNS(SVG_NS,tag);for(const[k,v]of Object.entries(attrs))e.setAttribute(k,v);return e;}
+
+function renderSVG(){
+  const svg=document.getElementById('svg');
+  svg.innerHTML='';
+  // ViewBox
+  const allPos=[];
+  for(const[k,s]of board.entries())if(s.length>0)allPos.push(pk(k));
+  if(tweaks.hints)for(const p of validMoves)allPos.push(p);
+  allPos.push([0,0]);
+  let minX=Infinity,maxX=-Infinity,minY=Infinity,maxY=-Infinity;
+  for(const[q,r]of allPos){const{x,y}=hexXY(q,r);minX=Math.min(minX,x);maxX=Math.max(maxX,x);minY=Math.min(minY,y);maxY=Math.max(maxY,y);}
+  const pad=R*3;
+  svg.setAttribute('viewBox',`${minX-pad} ${minY-pad} ${maxX-minX+pad*2} ${maxY-minY+pad*2}`);
+
+  // Grid
+  if(tweaks.grid){
+    const gk=new Set(['0,0']);
+    for(const[k,s]of board.entries())if(s.length>0){gk.add(k);const[q,r]=pk(k);for(const[dq,dr]of DIRS)gk.add(hk(q+dq,r+dr));}
+    for(const vm of validMoves){gk.add(hk(...vm));const[q,r]=vm;for(const[dq,dr]of DIRS)gk.add(hk(q+dq,r+dr));}
+    for(const k of gk){const[q,r]=pk(k);if(isOcc(board,q,r))continue;const{x,y}=hexXY(q,r);svg.appendChild(svgEl('polygon',{points:hexPts(x,y),fill:'transparent',stroke:'#1c1a18','stroke-width':'0.8'}));}
+  }
+
+  // Valid empty placements
+  if(tweaks.hints){
+    for(const[vq,vr]of validMoves){
+      if(isOcc(board,vq,vr))continue;
+      const{x,y}=hexXY(vq,vr);
+      const g=svgEl('g');g.style.cursor='pointer';
+      g.appendChild(svgEl('polygon',{points:hexPts(x,y),fill:'rgba(74,222,128,0.07)',stroke:'rgba(74,222,128,0.4)','stroke-width':'1.5','stroke-dasharray':'5 4'}));
+      g.appendChild(svgEl('circle',{cx:x,cy:y,r:7,fill:'rgba(74,222,128,0.3)'}));
+      g.addEventListener('click',()=>selectBoardHex(vq,vr));
+      svg.appendChild(g);
+    }
+  }
+
+  // Board pieces
+  for(const[k,s]of board.entries()){
+    if(!s.length)continue;
+    const[q,r]=pk(k);const{x,y}=hexXY(q,r);
+    const t=s[s.length-1];
+    const isBlocked = t.color===turn && !!getBlockReason(q,r);
+    const isSel=selected?.source==='board'&&selected.q===q&&selected.r===r;
+    const isBlockedSel=selected?.source==='blocked'&&selected.q===q&&selected.r===r;
+    const isVM=tweaks.hints&&validMoves.some(([vq,vr])=>vq===q&&vr===r);
+    const isW=t.color==='white';
+    const g=svgEl('g');g.style.cursor=isBlocked?'not-allowed':'pointer';
+    // Stack shadows
+    for(let i=s.length-1;i>0;i--){const off=i*3;g.appendChild(svgEl('polygon',{points:hexPts(x+off,y+off),fill:'#040302',stroke:'none'}));}
+    const fill=isSel||isBlockedSel?'rgba(245,158,11,0.2)':isW?'#d0cbc2':'#181410';
+    const stroke=isBlockedSel?'rgba(200,60,60,0.8)':isSel?'#f59e0b':isVM?'#f59e0b':isW?'#7a756e':'#b87409';
+    const sw=isSel||isVM||isBlockedSel?2.5:1.8;
+    g.appendChild(svgEl('polygon',{points:hexPts(x,y),fill,stroke,'stroke-width':sw}));
+    if(isVM)g.appendChild(svgEl('polygon',{points:hexPts(x,y),fill:'rgba(74,222,128,0.06)',stroke:'rgba(74,222,128,0.55)','stroke-width':'2','stroke-dasharray':'4 3'}));
+    // Blocked tint overlay (shown on hover via JS) — skip if this hex is a valid beetle target
+    const isBeetleTarget = isVM && selected?.type==='B';
+    if(isBlocked && !isBeetleTarget){
+      const overlay=svgEl('polygon',{points:hexPts(x,y),fill:'rgba(180,60,60,0)',stroke:'rgba(180,60,60,0)','stroke-width':'2'});
+      overlay.style.transition='fill .12s,stroke .12s';
+      overlay.dataset.blockedOverlay='1';
+      g.appendChild(overlay);
+    }
+    // Bug icon via foreignObject
+    const iconCol=isW?'#28221a':'#f59e0b';
+    const fo=svgEl('foreignObject');
+    fo.setAttribute('x',x-14);fo.setAttribute('y',y-14);fo.setAttribute('width','28');fo.setAttribute('height','28');
+    fo.innerHTML=`<div xmlns="http://www.w3.org/1999/xhtml" style="width:28px;height:28px;pointer-events:none">${PIECE_ICONS[t.type](iconCol,28)}</div>`;
+    g.appendChild(fo);
+    // Stack count
+    if(s.length>1){g.appendChild(svgEl('circle',{cx:x+R*0.54,cy:y-R*0.52,r:9,fill:'#f59e0b'}));const cnt=svgEl('text',{x:x+R*0.54,y:y-R*0.52,'text-anchor':'middle','dominant-baseline':'central'});cnt.style.cssText='font-size:9px;font-weight:700;fill:#000;font-family:"IBM Plex Mono",monospace;pointer-events:none';cnt.textContent=s.length;g.appendChild(cnt);}
+    if(tweaks.coords){const co=svgEl('text',{x,y:y+R*0.76,'text-anchor':'middle'});co.style.cssText='font-size:8px;fill:#444;font-family:"IBM Plex Mono",monospace;pointer-events:none';co.textContent=`${q},${r}`;g.appendChild(co);}
+    if(s.length > 1 || isBeetleTarget){
+      const boardEl = document.getElementById('board');
+      g.addEventListener('mouseenter', e => {
+        if(isBlocked && !isBeetleTarget) return;
+        const rect = boardEl.getBoundingClientRect();
+        if(isBeetleTarget){
+          const tip=document.getElementById('hex-tooltip');
+          document.getElementById('ht-title').innerHTML=`<span style="color:rgba(74,222,128,0.9)">STACK HERE</span>`;
+          document.getElementById('ht-body').innerHTML=(s.length>1?buildStackTooltipHTML(s)+'<br>':'')+`<span style="color:rgba(74,222,128,0.7)">Beetle will climb on top.</span>`;
+          tip.style.borderColor='rgba(74,222,128,0.5)';
+          tip.style.left=(e.clientX-rect.left+14)+'px';
+          tip.style.top=(e.clientY-rect.top-10)+'px';
+          tip.classList.remove('hidden');
+        } else {
+          showStackTooltip(e.clientX-rect.left, e.clientY-rect.top, s);
+        }
+      });
+      g.addEventListener('mousemove', e => {
+        if(isBlocked && !isBeetleTarget) return;
+        const rect = boardEl.getBoundingClientRect();
+        const tip=document.getElementById('hex-tooltip');
+        tip.style.left=(e.clientX-rect.left+14)+'px';
+        tip.style.top=(e.clientY-rect.top-10)+'px';
+      });
+      g.addEventListener('mouseleave', () => {
+        if(isBlocked && !isBeetleTarget) return;
+        const tip=document.getElementById('hex-tooltip');
+        tip.style.borderColor='';
+        hideTooltip();
+      });
+    }
+    if(isBlocked && !isBeetleTarget){
+      const boardEl2=document.getElementById('board');
+      g.addEventListener('mouseenter',e=>{
+        const overlay=g.querySelector('[data-blocked-overlay]');
+        if(overlay){overlay.setAttribute('fill','rgba(180,60,60,0.12)');overlay.setAttribute('stroke','rgba(180,60,60,0.5)');}
+        const rect=boardEl2.getBoundingClientRect();
+        showTooltip(e.clientX-rect.left, e.clientY-rect.top, getBlockReason(q,r));
+      });
+      g.addEventListener('mousemove',e=>{
+        const rect=boardEl2.getBoundingClientRect();
+        showTooltip(e.clientX-rect.left, e.clientY-rect.top, getBlockReason(q,r));
+      });
+      g.addEventListener('mouseleave',()=>{
+        const overlay=g.querySelector('[data-blocked-overlay]');
+        if(overlay){overlay.setAttribute('fill','rgba(180,60,60,0)');overlay.setAttribute('stroke','rgba(180,60,60,0)');}
+        hideTooltip();
+      });
+    }
+    g.addEventListener('click',()=>selectBoardHex(q,r));
+    svg.appendChild(g);
+  }
+}
+
+// ─── HAND RENDERING ───
+function makePieceSVG(type,color,sel=false){
+  const sz=40,cx=sz/2,cy=sz*0.46,hr=sz*0.42;
+  const pts=Array.from({length:6},(_,i)=>{const a=Math.PI/3*i;return`${cx+hr*Math.cos(a)},${cy+hr*Math.sin(a)}`;}).join(' ');
+  const isW=color==='white';
+  const fill=sel?'rgba(245,158,11,0.18)':isW?'#d0cbc2':'#181410';
+  const stroke=sel?'#f59e0b':isW?'#7a756e':'#b87409';
+  const sw=sel?2:1.5;
+  const iconCol=isW?'#28221a':'#f59e0b';
+  return `<svg width="${sz}" height="${sz*0.92}" viewBox="0 0 ${sz} ${sz*0.92}" style="display:block">
+    <polygon points="${pts}" fill="${fill}" stroke="${stroke}" stroke-width="${sw}"/>
+    <foreignObject x="${cx-11}" y="${cy-11}" width="22" height="22">
+      <div xmlns="http://www.w3.org/1999/xhtml" style="width:22px;height:22px">${PIECE_ICONS[type](iconCol,22)}</div>
+    </foreignObject>
+  </svg>`;
+}
+
+function renderHand(color){
+  const container=document.getElementById(`hand-${color}`);
+  container.innerHTML='';
+  const isActive=turn===color&&!winner;
+  const mPQ=mustPlaceQueen(color);
+  for(const type of PIECE_ORDER){
+    const count=hands[color][type];
+    const div=document.createElement('div');
+    const isSel=selected?.source==='hand'&&selected.color===color&&selected.type===type;
+    const isEmpty=count===0;
+    const isOff=!isActive||(mPQ&&type!=='Q');
+    div.className=`pce${isEmpty?' gone':''}${!isEmpty&&isOff?' off':''}${isSel?' picked':''}${!isEmpty&&mPQ&&type==='Q'?' warn':''}`;
+    div.title=`${PIECE_NAMES[type]}: ${PIECE_DESC[type]}`;
+    div.innerHTML=`${makePieceSVG(type,color,isSel)}<span class="pce-lbl">${PIECE_NAMES[type]}</span>${!isEmpty?`<span class="pce-cnt">×${count}</span>`:''}`;
+    if(!isEmpty&&!isOff)div.addEventListener('click',()=>selectHandPiece(color,type));
+    // Explain why disabled hand pieces can't be played
+    if(!isEmpty&&isOff&&turn===color){
+      const hr=getHandBlockReason(color,type);
+      if(hr){
+        div.title='';
+        div.addEventListener('mouseenter',e=>{
+          const rect=document.getElementById('board').getBoundingClientRect();
+          const pr=div.closest('.panel').getBoundingClientRect();
+          // position tooltip above the board area
+          showTooltip(pr.left+div.offsetLeft-rect.left, color==='white'?-60:rect.height+10, hr);
+        });
+        div.addEventListener('mouseleave',hideTooltip);
+        div.addEventListener('click',()=>{
+          selected={source:'blocked',q:null,r:null,type,reason:hr,color};validMoves=[];render();
+        });
+      }
+    }
+    container.appendChild(div);
+  }
+}
+
+// ─── UI UPDATE ───
+function render(){
+  document.getElementById('undo-btn').style.display = history.length ? '' : 'none';
+  document.getElementById('panel-black').classList.toggle('active',turn==='black'&&!winner);
+  ['white','black'].forEach(c=>{
+    const a=turn===c&&!winner;
+    const el=document.getElementById(`status-${c}`);
+    el.textContent=a?(mustPlaceQueen(c)?'⚠ MUST PLACE QUEEN':'YOUR TURN'):'WAITING';
+    el.className='p-status'+(a?' live':'');
+  });
+  renderHand('white');renderHand('black');
+  renderSVG();
+  renderMovePreview();
+  document.getElementById('info-move').textContent=moveCount+1;
+  const it=document.getElementById('info-turn');it.textContent=turn.toUpperCase();it.style.color=turn==='white'?'#cec9c0':'#f59e0b';
+  const ss=document.getElementById('info-sel'),st=document.getElementById('info-sel-text');
+  if(selected){ss.style.display='';const n=selected.source==='hand'?PIECE_NAMES[selected.type]:`BOARD (${selected.q},${selected.r})`;st.textContent=`${n} — ${validMoves.length} MOVES`;}else ss.style.display='none';
+  const we=document.getElementById('info-warn');
+  if(!queenOnBoard(turn)&&!winner){const left=4-playerMoveNum();if(left<=0){we.style.display='';we.textContent='⚠ MUST PLACE QUEEN NOW';}else if(left===1){we.style.display='';we.textContent='⚠ PLACE QUEEN NEXT TURN';}else we.style.display='none';}else we.style.display='none';
+}
+
+render();
+</script>
+</body>
+</html>
